@@ -1,0 +1,68 @@
+# Core dependencies
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+httpx>=0.25.2
+
+# CDP SDK - PRIMARY blockchain interface (latest stable)
+cdp-sdk>=1.29.0
+
+# LangGraph - State machine orchestration (latest stable)
+langgraph>=0.6.6
+langgraph-checkpoint>=1.0.0
+
+# LLM and Memory
+openai>=1.10.0
+mem0ai>=0.1.0
+
+# Data Processing and ML
+pandas==2.1.4
+numpy==1.26.2
+scikit-learn>=1.3.0
+
+# Database and Storage
+qdrant-client>=1.7.0
+firebase-admin>=6.2.0
+
+# Web Framework (for API/monitoring)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Async and Networking
+aiohttp==3.9.1
+asyncio-throttle>=1.0.2
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+colorlog==6.8.0
+click>=8.1.0
+python-json-logger>=2.0.0
+
+# Development and Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+pytest-cov==4.1.0
+pytest-xdist==3.5.0
+pytest-env==1.1.3
+pytest-timeout==2.2.0
+pytest-clarity==1.0.1
+pytest-html==4.1.1
+pytest-random-order==1.1.1
+pytest-benchmark==4.0.0
+pytest-sugar==0.9.7
+responses==0.24.1
+httpx-mock==0.21.3
+freezegun==1.2.2
+factory-boy==3.3.0
+faker==20.1.0
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.7.0
+pre-commit>=3.6.0
+coverage[toml]>=7.3.0
+
+# Monitoring and Observability
+prometheus-client>=0.19.0
+structlog>=23.2.0
+psutil>=5.9.0

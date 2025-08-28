@@ -1,0 +1,474 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  # Test environment variables (no real secrets)
+  TESTING: "true"
+  LOG_LEVEL: "DEBUG"
+  OPENAI_API_KEY: "test_openai_key"
+  CDP_API_KEY: "test_cdp_key"
+  CDP_PRIVATE_KEY: "test_cdp_private_key"
+  QDRANT_HOST: "localhost"
+  QDRANT_PORT: "6333"
+  MEMORY_USER_ID: "test_agent"
+  MEMORY_COLLECTION: "test_memories"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+    
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.7.0
+        ports:
+          - 6333:6333
+        env:
+          QDRANT__SERVICE__HTTP_PORT: 6333
+          QDRANT__SERVICE__GRPC_PORT: 6334
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/health"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Verify installation
+      run: |
+        pip list
+        python -c "import pytest; print(f'pytest version: {pytest.__version__}')"
+        
+    - name: Wait for Qdrant to be ready
+      run: |
+        timeout=60
+        counter=0
+        while [ $counter -lt $timeout ]; do
+          if curl -f http://localhost:6333/health > /dev/null 2>&1; then
+            echo "Qdrant is ready!"
+            break
+          fi
+          echo "Waiting for Qdrant to be ready... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        if [ $counter -ge $timeout ]; then
+          echo "Qdrant failed to start within $timeout seconds"
+          exit 1
+        fi
+
+    - name: Run linting
+      run: |
+        # Run black for code formatting check
+        black --check --diff src/ tests/
+        
+        # Run isort for import sorting check  
+        isort --check-only --diff src/ tests/
+        
+        # Run mypy for type checking (allow failures for now)
+        mypy src/ || true
+
+    - name: Run unit tests
+      run: |
+        pytest tests/ \
+          --verbose \
+          --tb=short \
+          --cov=src \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-fail-under=70 \
+          --junit-xml=test-results-unit.xml \
+          -m "unit or not integration" \
+          --maxfail=10
+
+    - name: Run integration tests
+      run: |
+        pytest tests/ \
+          --verbose \
+          --tb=short \
+          --cov=src \
+          --cov-append \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-report=html \
+          --junit-xml=test-results-integration.xml \
+          -m "integration" \
+          --maxfail=5
+          
+    - name: Run slow tests (if on main branch)
+      if: github.ref == 'refs/heads/main'
+      run: |
+        pytest tests/ \
+          --verbose \
+          --tb=short \
+          -m "slow" \
+          --maxfail=3
+
+    - name: Generate test report
+      if: always()
+      run: |
+        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f test-results-unit.xml ]; then
+          echo "### Unit Tests" >> $GITHUB_STEP_SUMMARY
+          python -c "
+import xml.etree.ElementTree as ET
+try:
+    tree = ET.parse('test-results-unit.xml')
+    root = tree.getroot()
+    tests = int(root.get('tests', 0))
+    failures = int(root.get('failures', 0))
+    errors = int(root.get('errors', 0))
+    skipped = int(root.get('skipped', 0))
+    passed = tests - failures - errors - skipped
+    print(f'- **Total**: {tests}')
+    print(f'- **Passed**: {passed}')
+    print(f'- **Failed**: {failures}')
+    print(f'- **Errors**: {errors}')
+    print(f'- **Skipped**: {skipped}')
+except Exception as e:
+    print('Could not parse unit test results')
+" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f test-results-integration.xml ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Integration Tests" >> $GITHUB_STEP_SUMMARY
+          python -c "
+import xml.etree.ElementTree as ET
+try:
+    tree = ET.parse('test-results-integration.xml')
+    root = tree.getroot()
+    tests = int(root.get('tests', 0))
+    failures = int(root.get('failures', 0))
+    errors = int(root.get('errors', 0))
+    skipped = int(root.get('skipped', 0))
+    passed = tests - failures - errors - skipped
+    print(f'- **Total**: {tests}')
+    print(f'- **Passed**: {passed}')
+    print(f'- **Failed**: {failures}')
+    print(f'- **Errors**: {errors}')
+    print(f'- **Skipped**: {skipped}')
+except Exception as e:
+    print('Could not parse integration test results')
+" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload coverage reports
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report-${{ matrix.python-version }}
+        path: |
+          htmlcov/
+          coverage.xml
+        retention-days: 30
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test-results-*.xml
+        retention-days: 30
+
+    - name: Comment PR with test results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment = '## 🧪 Test Results\n\n';
+          comment += `**Python Version:** ${{ matrix.python-version }}\n\n`;
+          
+          try {
+            if (fs.existsSync('test-results-unit.xml')) {
+              const xml = fs.readFileSync('test-results-unit.xml', 'utf8');
+              const match = xml.match(/tests="(\d+)".*failures="(\d+)".*errors="(\d+)".*skipped="(\d+)"/);
+              if (match) {
+                const [, tests, failures, errors, skipped] = match;
+                const passed = tests - failures - errors - skipped;
+                comment += '### Unit Tests\n';
+                comment += `- ✅ Passed: ${passed}\n`;
+                comment += `- ❌ Failed: ${failures}\n`;
+                comment += `- ⚠️ Errors: ${errors}\n`;
+                comment += `- ⏭️ Skipped: ${skipped}\n`;
+                comment += `- 📊 Total: ${tests}\n\n`;
+              }
+            }
+            
+            if (fs.existsSync('test-results-integration.xml')) {
+              const xml = fs.readFileSync('test-results-integration.xml', 'utf8');
+              const match = xml.match(/tests="(\d+)".*failures="(\d+)".*errors="(\d+)".*skipped="(\d+)"/);
+              if (match) {
+                const [, tests, failures, errors, skipped] = match;
+                const passed = tests - failures - errors - skipped;
+                comment += '### Integration Tests\n';
+                comment += `- ✅ Passed: ${passed}\n`;
+                comment += `- ❌ Failed: ${failures}\n`;
+                comment += `- ⚠️ Errors: ${errors}\n`;
+                comment += `- ⏭️ Skipped: ${skipped}\n`;
+                comment += `- 📊 Total: ${tests}\n\n`;
+              }
+            }
+            
+            if (fs.existsSync('coverage.xml')) {
+              comment += '### Coverage Report Available\n';
+              comment += '📈 Coverage report has been generated and uploaded as an artifact.\n\n';
+            }
+            
+          } catch (error) {
+            comment += '⚠️ Could not parse test results\n\n';
+          }
+          
+          comment += `**Workflow:** ${{ github.workflow }}\n`;
+          comment += `**Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n`;
+          
+          // Post comment (only for the first matrix job to avoid spam)
+          if ('${{ matrix.python-version }}' === '3.10') {
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+
+    - name: Run Bandit security scan
+      run: |
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/ -f txt
+
+    - name: Check for known security vulnerabilities
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check
+
+    - name: Upload security scan results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+        retention-days: 30
+
+  performance-benchmark:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.7.0
+        ports:
+          - 6333:6333
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Wait for Qdrant
+      run: |
+        timeout=30
+        counter=0
+        while [ $counter -lt $timeout ]; do
+          if curl -f http://localhost:6333/health > /dev/null 2>&1; then
+            break
+          fi
+          sleep 2
+          counter=$((counter + 2))
+        done
+
+    - name: Run performance benchmarks
+      run: |
+        pytest tests/ \
+          --verbose \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json \
+          --benchmark-sort=mean \
+          --benchmark-warmup=on \
+          || true
+
+    - name: Upload benchmark results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark-results.json
+        retention-days: 30
+
+  build-check:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel setuptools
+
+    - name: Build package
+      run: |
+        python -m build
+
+    - name: Verify package
+      run: |
+        pip install dist/*.whl
+        python -c "import aerodrome_ai_agent; print('Package installed successfully')"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: dist/
+        retention-days: 30
+
+  documentation-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install documentation dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install sphinx sphinx-rtd-theme
+        pip install -r requirements.txt
+
+    - name: Check documentation can be built
+      run: |
+        if [ -d "docs" ]; then
+          cd docs
+          if [ -f "conf.py" ]; then
+            sphinx-build -b html . _build/html -W
+            echo "Documentation built successfully"
+          else
+            echo "No Sphinx configuration found, skipping doc build"
+          fi
+        else
+          echo "No docs directory found, skipping documentation check"
+        fi
+
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, build-check]
+    if: always()
+    
+    steps:
+    - name: Generate overall summary
+      run: |
+        echo "# 🚀 Aerodrome AI Agent - Test Suite Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Status Overview" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.test.result }}" == "success" ]; then
+          echo "✅ **Tests**: Passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.security-scan.result }}" == "success" ]; then
+          echo "🔒 **Security Scan**: Passed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Security Scan**: Issues found" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.build-check.result }}" == "success" ]; then
+          echo "📦 **Build**: Successful" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Build**: Failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Categories" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- 🧪 **Unit Tests**: Core component functionality" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔗 **Integration Tests**: Component interactions" >> $GITHUB_STEP_SUMMARY
+        echo "- 🐌 **Slow Tests**: Performance and long-running tests" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔒 **Security Tests**: Vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Coverage Requirements" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Minimum Coverage**: 70%" >> $GITHUB_STEP_SUMMARY
+        echo "- **Target Coverage**: 80%+" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "*Generated by GitHub Actions*" >> $GITHUB_STEP_SUMMARY
