@@ -31,7 +31,7 @@ This brain is a comprehensive intelligence system that:
 - Enables risk-adjusted decision making
 
 ### 🤖 AI-Powered Intelligence
-- Google Gemini integration for advanced analysis
+- Google Gemini 2.0 integration for advanced analysis
 - Pattern recognition across complex protocol interactions
 - Predictive insights with confidence levels
 - Natural language query interface
@@ -40,12 +40,15 @@ This brain is a comprehensive intelligence system that:
 
 ```
 aerodrome-brain/
-├── brain/              # Core intelligence system
-├── memory/            # Mem0 integration with pruning
-├── protocol/          # Aerodrome protocol interface
-├── intelligence/      # Gemini AI and analysis
-├── api/              # REST/WebSocket APIs
-└── config/           # Configuration and rules
+├── src/
+│   ├── brain/              # Core intelligence system with confidence scoring
+│   ├── memory/            # Mem0 integration with pruning engine
+│   ├── protocol/          # Aerodrome protocol interface (QuickNode)
+│   ├── intelligence/      # Gemini AI and analysis
+│   ├── api/              # REST/WebSocket APIs
+│   └── config/           # Configuration and rules
+├── deployment/           # Google Cloud deployment configs
+└── tests/               # Comprehensive test suite
 ```
 
 ## Memory Categories
@@ -65,6 +68,7 @@ aerodrome-brain/
 - Google Cloud Project with Gemini API access
 - QuickNode endpoint with Aerodrome API addon
 - Mem0 API key
+- Neo4j (for graph memory support)
 
 ### Installation
 
@@ -85,11 +89,13 @@ cp .env.example .env
 
 ```bash
 # Required environment variables
-QUICKNODE_ENDPOINT=your_quicknode_endpoint
+QUICKNODE_URL=your_quicknode_endpoint
 MEM0_API_KEY=your_mem0_key
 GOOGLE_CLOUD_PROJECT=your_project_id
 GEMINI_API_KEY=your_gemini_key
-BASE_RPC_URL=your_base_rpc
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_password
 ```
 
 ## Usage
@@ -97,7 +103,7 @@ BASE_RPC_URL=your_base_rpc
 ### Starting the Brain
 
 ```python
-from brain import AerodromeBrain
+from brain.core import AerodromeBrain
 
 # Initialize the brain
 brain = AerodromeBrain()
@@ -128,7 +134,19 @@ GET /api/voting/recommendations
 
 # Memory statistics
 GET /api/memory/stats
+
+# Health check
+GET /health
 ```
+
+### Memory Management
+
+The brain automatically manages its memory through:
+
+1. **Confidence-based pruning**: Removes low-confidence memories
+2. **Age-based pruning**: Removes outdated information
+3. **Consolidation**: Merges similar patterns
+4. **Compression**: Reduces redundant information
 
 ## Deployment
 
@@ -143,6 +161,16 @@ gcloud run deploy aerodrome-brain \
   --cpu 2 \
   --min-instances 1 \
   --max-instances 10
+```
+
+### Docker
+
+```bash
+# Build image
+docker build -t aerodrome-brain .
+
+# Run container
+docker run -p 8080:8080 --env-file .env aerodrome-brain
 ```
 
 ## How It Works
@@ -165,6 +193,26 @@ The brain provides intelligence that can be used by separate trading systems for
 
 **Note**: The brain itself does not execute trades or manage funds. It provides intelligence for informed decision-making.
 
+## Testing
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src
+
+# Run specific test module
+pytest tests/test_brain.py
+```
+
+## Monitoring
+
+- **Metrics**: Prometheus metrics on port 8080
+- **Health Check**: `/health` endpoint
+- **Logs**: Structured logging with confidence scores
+- **Alerts**: Configurable alerts for low confidence or anomalies
+
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
@@ -172,3 +220,7 @@ Contributions are welcome! Please read our contributing guidelines before submit
 ## License
 
 MIT
+
+## Disclaimer
+
+This software is for educational and research purposes. The brain provides analysis and insights but does not execute trades or manage funds. Always conduct your own research before making financial decisions.
