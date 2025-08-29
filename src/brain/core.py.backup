@@ -1,0 +1,1335 @@
+"""
+<<<<<<< HEAD
+Aerodrome Brain Core Orchestrator
+
+Main orchestrator that integrates all components of the Aerodrome AI Agent:
+- Confidence scoring and metrics
+- Memory management with Mem0
+- Protocol data monitoring
+- AI intelligence and pattern recognition
+- Query processing and response generation
+- System health monitoring
+
+This is the central coordination layer that manages data flow and system state.
+=======
+Core Brain implementation using LangGraph.
+
+This module contains the main AerodromeBrain class that implements the cognitive
+state machine using LangGraph, following current best practices for async operation,
+state management, and graph construction.
+>>>>>>> 620c6999520bfc987c21b906916676e9b874d19c
+"""
+
+import asyncio
+import logging
+import time
+<<<<<<< HEAD
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Union, Callable, Tuple
+from dataclasses import dataclass, field
+from enum import Enum
+from contextlib import asynccontextmanager
+
+import structlog
+from pydantic import BaseModel, Field
+
+# Internal imports
+from .confidence_scorer import (
+    ConfidenceScorer,
+    MemoryItem,
+    MemoryCategory,
+    DataSourceType,
+    ConfidenceFactors,
+    ConfidenceThresholds
+)
+from .confidence_metrics import MetricsCollector, MetricsAnalyzer, MetricsReporter
+from .knowledge_base import ProtocolKnowledgeBase, KnowledgeQuery, KnowledgeResponse
+from .query_handler import QueryHandler, QueryType, QueryContext, QueryResponse
+
+from ..memory import EnhancedMem0Client, MemoryPruningEngine
+from ..protocol import AerodromeClient, PoolMonitor, VotingAnalyzer
+from ..intelligence import GeminiClient, PatternRecognitionEngine, PredictionEngine
+
+logger = structlog.get_logger(__name__)
+
+
+class SystemStatus(Enum):
+    """Overall system status"""
+    STARTING = "starting"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    ERROR = "error"
+    SHUTTING_DOWN = "shutting_down"
+
+
+class ComponentStatus(Enum):
+    """Individual component status"""
+    INITIALIZING = "initializing"
+    READY = "ready"
+    BUSY = "busy"
+    ERROR = "error"
+    OFFLINE = "offline"
+
+
+@dataclass
+class ComponentHealth:
+    """Health status for a system component"""
+    name: str
+    status: ComponentStatus
+    last_update: datetime
+    error_count: int = 0
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    last_error: Optional[str] = None
+
+
+@dataclass
+class SystemMetrics:
+    """System-wide metrics"""
+    total_queries: int = 0
+    successful_queries: int = 0
+    failed_queries: int = 0
+    avg_response_time: float = 0.0
+    memory_items: int = 0
+    confidence_avg: float = 0.0
+    uptime: timedelta = field(default_factory=timedelta)
+    last_updated: datetime = field(default_factory=datetime.now)
+
+
+class BrainConfig(BaseModel):
+    """Configuration for the Brain core system"""
+    
+    # Component configurations
+    confidence_config: Dict[str, Any] = Field(default_factory=dict)
+    memory_config: Dict[str, Any] = Field(default_factory=dict)
+    protocol_config: Dict[str, Any] = Field(default_factory=dict)
+    intelligence_config: Dict[str, Any] = Field(default_factory=dict)
+    
+    # System settings
+    health_check_interval: int = Field(default=30)  # seconds
+    metrics_update_interval: int = Field(default=60)  # seconds
+    auto_pruning_interval: int = Field(default=3600)  # seconds
+    max_concurrent_queries: int = Field(default=10)
+    
+    # Logging configuration
+    log_level: str = Field(default="INFO")
+    enable_detailed_logging: bool = Field(default=True)
+    
+    # Safety settings
+    max_memory_items: int = Field(default=100000)
+    confidence_threshold: float = Field(default=0.3)
+    emergency_shutdown_threshold: int = Field(default=100)  # consecutive errors
+=======
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Literal, Union
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
+
+from .state import BrainState, BrainConfig
+from .nodes.observe import ObserverNode
+from .nodes.recall import RecallNode
+from .nodes.analyze import AnalyzeNode
+from .nodes.decide import DecisionNode
+from .nodes.execute import ExecutionNode
+from .nodes.learn import LearningNode
+from .algorithms import OpportunityScorer, RiskAssessor
+from .errors import BrainErrorHandler
+>>>>>>> 620c6999520bfc987c21b906916676e9b874d19c
+
+
+class AerodromeBrain:
+    """
+<<<<<<< HEAD
+    Main orchestrator for the Aerodrome AI Agent brain system.
+    
+    Coordinates all components and manages system state, health monitoring,
+    query processing, and data flow between subsystems.
+    """
+    
+    def __init__(self, config: BrainConfig):
+        """
+        Initialize the brain orchestrator.
+        
+        Args:
+            config: Brain configuration settings
+        """
+        self.config = config
+        self.logger = structlog.get_logger(__name__)
+        
+        # System state
+        self.status = SystemStatus.STARTING
+        self.start_time = datetime.now()
+        self.component_health: Dict[str, ComponentHealth] = {}
+        self.system_metrics = SystemMetrics()
+        self.consecutive_errors = 0
+        
+        # Component references
+        self.confidence_scorer: Optional[ConfidenceScorer] = None
+        self.metrics_collector: Optional[MetricsCollector] = None
+        self.metrics_analyzer: Optional[MetricsAnalyzer] = None
+        self.metrics_reporter: Optional[MetricsReporter] = None
+        
+        self.knowledge_base: Optional[ProtocolKnowledgeBase] = None
+        self.query_handler: Optional[QueryHandler] = None
+        
+        self.memory_client: Optional[EnhancedMem0Client] = None
+        self.pruning_engine: Optional[MemoryPruningEngine] = None
+        
+        self.aerodrome_client: Optional[AerodromeClient] = None
+        self.pool_monitor: Optional[PoolMonitor] = None
+        self.voting_analyzer: Optional[VotingAnalyzer] = None
+        
+        self.gemini_client: Optional[GeminiClient] = None
+        self.pattern_engine: Optional[PatternRecognitionEngine] = None
+        self.prediction_engine: Optional[PredictionEngine] = None
+        
+        # Background tasks
+        self._background_tasks: List[asyncio.Task] = []
+        self._shutdown_event = asyncio.Event()
+        self._query_semaphore = asyncio.Semaphore(config.max_concurrent_queries)
+        
+        # Initialize component health tracking
+        self._init_component_health()
+    
+    def _init_component_health(self) -> None:
+        """Initialize component health tracking."""
+        component_names = [
+            "confidence_scorer", "metrics_collector", "knowledge_base",
+            "query_handler", "memory_client", "aerodrome_client",
+            "gemini_client", "pattern_engine", "prediction_engine"
+        ]
+        
+        for name in component_names:
+            self.component_health[name] = ComponentHealth(
+                name=name,
+                status=ComponentStatus.INITIALIZING,
+                last_update=datetime.now()
+            )
+    
+    async def initialize(self) -> None:
+        """
+        Initialize all brain components and start background tasks.
+        """
+        try:
+            await self.logger.ainfo("Starting brain initialization")
+            
+            # Initialize core components
+            await self._init_confidence_system()
+            await self._init_memory_system()
+            await self._init_protocol_system()
+            await self._init_intelligence_system()
+            await self._init_knowledge_system()
+            await self._init_query_system()
+            
+            # Start background tasks
+            await self._start_background_tasks()
+            
+            self.status = SystemStatus.HEALTHY
+            await self.logger.ainfo("Brain initialization completed successfully")
+            
+        except Exception as e:
+            self.status = SystemStatus.ERROR
+            await self.logger.aerror("Brain initialization failed", error=str(e))
+            raise
+    
+    async def _init_confidence_system(self) -> None:
+        """Initialize confidence scoring system."""
+        try:
+            self.confidence_scorer = ConfidenceScorer()
+            self.metrics_collector = MetricsCollector()
+            self.metrics_analyzer = MetricsAnalyzer()
+            self.metrics_reporter = MetricsReporter()
+            
+            self._update_component_health("confidence_scorer", ComponentStatus.READY)
+            self._update_component_health("metrics_collector", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Confidence system initialized")
+            
+        except Exception as e:
+            self._update_component_health("confidence_scorer", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize confidence system", error=str(e))
+            raise
+    
+    async def _init_memory_system(self) -> None:
+        """Initialize memory management system."""
+        try:
+            # Initialize Mem0 client with configuration
+            mem0_config = self.config.memory_config
+            self.memory_client = EnhancedMem0Client(
+                api_key=mem0_config.get("api_key"),
+                config=mem0_config.get("client_config", {}),
+                enable_graph=mem0_config.get("enable_graph", True),
+                neo4j_config=mem0_config.get("neo4j_config")
+            )
+            
+            # Initialize pruning engine
+            self.pruning_engine = MemoryPruningEngine(self.memory_client)
+            
+            self._update_component_health("memory_client", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Memory system initialized")
+            
+        except Exception as e:
+            self._update_component_health("memory_client", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize memory system", error=str(e))
+            raise
+    
+    async def _init_protocol_system(self) -> None:
+        """Initialize protocol integration system."""
+        try:
+            protocol_config = self.config.protocol_config
+            
+            # Initialize Aerodrome client
+            self.aerodrome_client = AerodromeClient(
+                quicknode_url=protocol_config.get("quicknode_url"),
+                config=protocol_config.get("client_config", {})
+            )
+            
+            # Initialize monitoring components
+            self.pool_monitor = PoolMonitor(
+                self.aerodrome_client,
+                config=protocol_config.get("monitor_config", {})
+            )
+            
+            self.voting_analyzer = VotingAnalyzer(
+                self.aerodrome_client,
+                config=protocol_config.get("voting_config", {})
+            )
+            
+            self._update_component_health("aerodrome_client", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Protocol system initialized")
+            
+        except Exception as e:
+            self._update_component_health("aerodrome_client", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize protocol system", error=str(e))
+            raise
+    
+    async def _init_intelligence_system(self) -> None:
+        """Initialize AI intelligence system."""
+        try:
+            intelligence_config = self.config.intelligence_config
+            
+            # Initialize Gemini client
+            self.gemini_client = GeminiClient(
+                api_key=intelligence_config.get("gemini_api_key"),
+                model=intelligence_config.get("model", "gemini-2.0-flash-001"),
+                config=intelligence_config.get("client_config", {})
+            )
+            
+            # Initialize AI engines
+            self.pattern_engine = PatternRecognitionEngine(self.gemini_client)
+            self.prediction_engine = PredictionEngine(self.gemini_client)
+            
+            self._update_component_health("gemini_client", ComponentStatus.READY)
+            self._update_component_health("pattern_engine", ComponentStatus.READY)
+            self._update_component_health("prediction_engine", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Intelligence system initialized")
+            
+        except Exception as e:
+            self._update_component_health("gemini_client", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize intelligence system", error=str(e))
+            raise
+    
+    async def _init_knowledge_system(self) -> None:
+        """Initialize knowledge base system."""
+        try:
+            self.knowledge_base = ProtocolKnowledgeBase(
+                memory_client=self.memory_client,
+                aerodrome_client=self.aerodrome_client,
+                confidence_scorer=self.confidence_scorer,
+                gemini_client=self.gemini_client
+            )
+            
+            await self.knowledge_base.initialize()
+            
+            self._update_component_health("knowledge_base", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Knowledge base system initialized")
+            
+        except Exception as e:
+            self._update_component_health("knowledge_base", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize knowledge base", error=str(e))
+            raise
+    
+    async def _init_query_system(self) -> None:
+        """Initialize query processing system."""
+        try:
+            self.query_handler = QueryHandler(
+                knowledge_base=self.knowledge_base,
+                gemini_client=self.gemini_client,
+                confidence_scorer=self.confidence_scorer
+            )
+            
+            self._update_component_health("query_handler", ComponentStatus.READY)
+            
+            await self.logger.ainfo("Query system initialized")
+            
+        except Exception as e:
+            self._update_component_health("query_handler", ComponentStatus.ERROR, str(e))
+            await self.logger.aerror("Failed to initialize query system", error=str(e))
+            raise
+    
+    async def _start_background_tasks(self) -> None:
+        """Start background monitoring and maintenance tasks."""
+        try:
+            # Health monitoring task
+            health_task = asyncio.create_task(self._health_monitor_loop())
+            self._background_tasks.append(health_task)
+            
+            # Metrics collection task
+            metrics_task = asyncio.create_task(self._metrics_update_loop())
+            self._background_tasks.append(metrics_task)
+            
+            # Memory pruning task
+            pruning_task = asyncio.create_task(self._memory_pruning_loop())
+            self._background_tasks.append(pruning_task)
+            
+            # Protocol data sync task
+            if self.knowledge_base:
+                sync_task = asyncio.create_task(self._protocol_sync_loop())
+                self._background_tasks.append(sync_task)
+            
+            await self.logger.ainfo(f"Started {len(self._background_tasks)} background tasks")
+            
+        except Exception as e:
+            await self.logger.aerror("Failed to start background tasks", error=str(e))
+            raise
+    
+    async def _health_monitor_loop(self) -> None:
+        """Background task for component health monitoring."""
+        while not self._shutdown_event.is_set():
+            try:
+                await self._check_component_health()
+                await self._update_system_status()
+                await asyncio.sleep(self.config.health_check_interval)
+                
+            except Exception as e:
+                await self.logger.aerror("Error in health monitor loop", error=str(e))
+                await asyncio.sleep(5)  # Brief pause before retry
+    
+    async def _metrics_update_loop(self) -> None:
+        """Background task for metrics collection and analysis."""
+        while not self._shutdown_event.is_set():
+            try:
+                await self._collect_system_metrics()
+                await self._analyze_performance()
+                await asyncio.sleep(self.config.metrics_update_interval)
+                
+            except Exception as e:
+                await self.logger.aerror("Error in metrics update loop", error=str(e))
+                await asyncio.sleep(10)
+    
+    async def _memory_pruning_loop(self) -> None:
+        """Background task for automatic memory pruning."""
+        while not self._shutdown_event.is_set():
+            try:
+                if self.pruning_engine and self.system_metrics.memory_items > 1000:
+                    await self.pruning_engine.run_pruning_cycle()
+                    await self.logger.ainfo("Completed automatic memory pruning cycle")
+                
+                await asyncio.sleep(self.config.auto_pruning_interval)
+                
+            except Exception as e:
+                await self.logger.aerror("Error in memory pruning loop", error=str(e))
+                await asyncio.sleep(60)
+    
+    async def _protocol_sync_loop(self) -> None:
+        """Background task for protocol data synchronization."""
+        while not self._shutdown_event.is_set():
+            try:
+                if self.knowledge_base:
+                    await self.knowledge_base.sync_protocol_data()
+                
+                await asyncio.sleep(300)  # Sync every 5 minutes
+                
+            except Exception as e:
+                await self.logger.aerror("Error in protocol sync loop", error=str(e))
+                await asyncio.sleep(60)
+    
+    def _update_component_health(
+        self, 
+        component: str, 
+        status: ComponentStatus,
+        error: Optional[str] = None
+    ) -> None:
+        """Update component health status."""
+        if component in self.component_health:
+            health = self.component_health[component]
+            health.status = status
+            health.last_update = datetime.now()
+            
+            if error:
+                health.error_count += 1
+                health.last_error = error
+            elif status == ComponentStatus.READY:
+                health.error_count = 0
+                health.last_error = None
+    
+    async def _check_component_health(self) -> None:
+        """Check health of all components."""
+        for name, health in self.component_health.items():
+            try:
+                component = getattr(self, name, None)
+                if component is None:
+                    health.status = ComponentStatus.OFFLINE
+                    continue
+                
+                # Component-specific health checks
+                if hasattr(component, 'health_check'):
+                    is_healthy = await component.health_check()
+                    if is_healthy:
+                        if health.status == ComponentStatus.ERROR:
+                            health.status = ComponentStatus.READY
+                    else:
+                        health.status = ComponentStatus.ERROR
+                
+            except Exception as e:
+                health.status = ComponentStatus.ERROR
+                health.error_count += 1
+                health.last_error = str(e)
+    
+    async def _update_system_status(self) -> None:
+        """Update overall system status based on component health."""
+        error_components = sum(
+            1 for h in self.component_health.values() 
+            if h.status == ComponentStatus.ERROR
+        )
+        
+        offline_components = sum(
+            1 for h in self.component_health.values()
+            if h.status == ComponentStatus.OFFLINE
+        )
+        
+        total_components = len(self.component_health)
+        
+        if error_components > total_components // 2:
+            self.status = SystemStatus.ERROR
+        elif error_components > 0 or offline_components > 0:
+            self.status = SystemStatus.DEGRADED
+        else:
+            self.status = SystemStatus.HEALTHY
+        
+        # Check for emergency shutdown
+        if self.consecutive_errors >= self.config.emergency_shutdown_threshold:
+            await self.logger.aerror(
+                f"Emergency shutdown triggered after {self.consecutive_errors} consecutive errors"
+            )
+            await self.shutdown()
+    
+    async def _collect_system_metrics(self) -> None:
+        """Collect system-wide metrics."""
+        try:
+            # Update uptime
+            self.system_metrics.uptime = datetime.now() - self.start_time
+            
+            # Collect memory metrics
+            if self.memory_client:
+                try:
+                    # This would need to be implemented in the memory client
+                    memory_stats = getattr(self.memory_client, 'get_stats', lambda: {})()
+                    self.system_metrics.memory_items = memory_stats.get('total_items', 0)
+                except:
+                    pass
+            
+            # Collect confidence metrics
+            if self.confidence_scorer and hasattr(self.confidence_scorer, 'get_average_confidence'):
+                try:
+                    self.system_metrics.confidence_avg = await self.confidence_scorer.get_average_confidence()
+                except:
+                    pass
+            
+            self.system_metrics.last_updated = datetime.now()
+            
+        except Exception as e:
+            await self.logger.aerror("Error collecting system metrics", error=str(e))
+    
+    async def _analyze_performance(self) -> None:
+        """Analyze system performance and adjust parameters."""
+        try:
+            if self.metrics_analyzer:
+                # Analyze recent performance
+                performance_data = await self.metrics_analyzer.analyze_recent_performance()
+                
+                # Adjust confidence scorer weights if needed
+                if self.confidence_scorer and "factor_performance" in performance_data:
+                    await self.confidence_scorer.adjust_factor_weights(
+                        performance_data["factor_performance"]
+                    )
+                
+        except Exception as e:
+            await self.logger.aerror("Error analyzing performance", error=str(e))
+    
+    async def process_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None
+    ) -> QueryResponse:
+        """
+        Process a user query through the brain system.
+        
+        Args:
+            query: Natural language query
+            context: Optional context information
+            user_id: Optional user identifier
+            
+        Returns:
+            QueryResponse with answer and metadata
+        """
+        start_time = time.time()
+        
+        async with self._query_semaphore:
+            try:
+                if not self.query_handler:
+                    raise RuntimeError("Query handler not initialized")
+                
+                # Track query
+                self.system_metrics.total_queries += 1
+                
+                # Create query context
+                query_context = QueryContext(
+                    query=query,
+                    user_id=user_id,
+                    timestamp=datetime.now(),
+                    context=context or {}
+                )
+                
+                # Process query
+                response = await self.query_handler.process_query(query_context)
+                
+                # Update metrics
+                response_time = time.time() - start_time
+                self.system_metrics.successful_queries += 1
+                self._update_response_time(response_time)
+                
+                # Reset consecutive error count on success
+                self.consecutive_errors = 0
+                
+                await self.logger.ainfo(
+                    "Query processed successfully",
+                    query_id=response.query_id,
+                    response_time=response_time,
+                    confidence=response.confidence
+                )
+                
+                return response
+                
+            except Exception as e:
+                self.system_metrics.failed_queries += 1
+                self.consecutive_errors += 1
+                
+                await self.logger.aerror(
+                    "Query processing failed",
+                    query=query[:100],  # Log first 100 chars
+                    error=str(e),
+                    user_id=user_id
+                )
+                
+                # Return error response
+                return QueryResponse(
+                    query_id=f"error_{int(time.time())}",
+                    response="I apologize, but I encountered an error processing your query. Please try again.",
+                    confidence=0.0,
+                    sources=[],
+                    metadata={
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+    
+    def _update_response_time(self, response_time: float) -> None:
+        """Update average response time metric."""
+        if self.system_metrics.successful_queries <= 1:
+            self.system_metrics.avg_response_time = response_time
+        else:
+            # Exponential moving average
+            alpha = 0.1
+            self.system_metrics.avg_response_time = (
+                alpha * response_time + 
+                (1 - alpha) * self.system_metrics.avg_response_time
+            )
+    
+    async def get_system_health(self) -> Dict[str, Any]:
+        """Get current system health and metrics."""
+        return {
+            "system_status": self.status.value,
+            "uptime": str(self.system_metrics.uptime),
+            "component_health": {
+                name: {
+                    "status": health.status.value,
+                    "last_update": health.last_update.isoformat(),
+                    "error_count": health.error_count,
+                    "last_error": health.last_error
+                }
+                for name, health in self.component_health.items()
+            },
+            "metrics": {
+                "total_queries": self.system_metrics.total_queries,
+                "successful_queries": self.system_metrics.successful_queries,
+                "failed_queries": self.system_metrics.failed_queries,
+                "success_rate": (
+                    self.system_metrics.successful_queries / 
+                    max(self.system_metrics.total_queries, 1)
+                ),
+                "avg_response_time": self.system_metrics.avg_response_time,
+                "memory_items": self.system_metrics.memory_items,
+                "confidence_avg": self.system_metrics.confidence_avg
+            }
+        }
+    
+    async def shutdown(self) -> None:
+        """Gracefully shutdown the brain system."""
+        try:
+            self.status = SystemStatus.SHUTTING_DOWN
+            await self.logger.ainfo("Starting brain shutdown")
+            
+            # Signal shutdown to background tasks
+            self._shutdown_event.set()
+            
+            # Wait for background tasks to complete
+            if self._background_tasks:
+                await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            
+            # Shutdown components
+            components_to_shutdown = [
+                self.memory_client,
+                self.aerodrome_client,
+                self.gemini_client
+            ]
+            
+            for component in components_to_shutdown:
+                if component and hasattr(component, 'shutdown'):
+                    try:
+                        await component.shutdown()
+                    except Exception as e:
+                        await self.logger.awarning(
+                            "Error shutting down component", 
+                            component=type(component).__name__,
+                            error=str(e)
+                        )
+            
+            await self.logger.ainfo("Brain shutdown completed")
+            
+        except Exception as e:
+            await self.logger.aerror("Error during brain shutdown", error=str(e))
+    
+    @asynccontextmanager
+    async def lifespan(self):
+        """Async context manager for brain lifecycle management."""
+        try:
+            await self.initialize()
+            yield self
+        finally:
+            await self.shutdown()
+
+
+# Factory function for easier initialization
+async def create_aerodrome_brain(config: BrainConfig) -> AerodromeBrain:
+    """
+    Factory function to create and initialize an Aerodrome Brain instance.
+    
+    Args:
+        config: Brain configuration
+=======
+    Main brain class implementing LangGraph-based cognitive state machine.
+    
+    The brain operates as a continuous cycle:
+    1. Observe market conditions
+    2. Recall relevant memories and patterns
+    3. Analyze opportunities 
+    4. Make decisions based on risk assessment
+    5. Execute actions via CDP SDK
+    6. Learn from results and update memory
+    
+    Uses modern LangGraph patterns including:
+    - Command objects for state updates and routing
+    - Async node execution for performance
+    - Conditional edges for dynamic flow control
+    - State reducers for proper state management
+    - Error recovery strategies
+    """
+
+    def __init__(
+        self, 
+        config: Optional[BrainConfig] = None,
+        cdp_manager=None,
+        memory_system=None
+    ):
+        """
+        Initialize the Aerodrome Brain.
+        
+        Args:
+            config: Brain configuration parameters
+            cdp_manager: CDP SDK manager instance
+            memory_system: Memory system for storing experiences
+        """
+        self.config = config or BrainConfig()
+        self.cdp_manager = cdp_manager
+        self.memory_system = memory_system
+        
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        # Initialize components
+        self._initialize_components()
+        
+        # Build and compile the graph
+        self.graph = self._build_graph()
+        self.compiled_graph = self.graph.compile(
+            checkpointer=MemorySaver(),
+            debug=True
+        )
+        
+        # Runtime state
+        self.is_running = False
+        self.emergency_stop_active = False
+        self.cycle_count = 0
+        
+        self.logger.info("AerodromeBrain initialized successfully")
+
+    def _initialize_components(self):
+        """Initialize all brain components and algorithms."""
+        
+        # Initialize node components
+        self.observer = ObserverNode(self.cdp_manager, self.config)
+        self.recall = RecallNode(self.memory_system, self.config)
+        self.analyzer = AnalyzeNode(self.config)
+        self.decision_maker = DecisionNode(self.config)
+        self.executor = ExecutionNode(self.cdp_manager, self.config)
+        self.learner = LearningNode(self.memory_system, self.config)
+        
+        # Initialize algorithms
+        self.opportunity_scorer = OpportunityScorer(self.config)
+        self.risk_assessor = RiskAssessor(self.config)
+        
+        # Initialize error handler
+        self.error_handler = BrainErrorHandler(self.config)
+
+    def _build_graph(self) -> StateGraph:
+        """
+        Build the cognitive state machine using LangGraph.
+        
+        Following LangGraph best practices:
+        - Uses modern StateGraph construction
+        - Implements proper async node patterns
+        - Uses Command objects for routing and state updates
+        - Includes conditional edges for dynamic flow
+        """
+        
+        # Initialize graph with state schema
+        graph = StateGraph(BrainState)
+        
+        # Add all cognitive nodes
+        graph.add_node("initialize", self._initialize_cycle)
+        graph.add_node("observe", self._observe_wrapper)
+        graph.add_node("recall", self._recall_wrapper)
+        graph.add_node("analyze", self._analyze_wrapper)
+        graph.add_node("decide", self._decide_wrapper)
+        graph.add_node("execute", self._execute_wrapper)
+        graph.add_node("learn", self._learn_wrapper)
+        graph.add_node("finalize", self._finalize_cycle)
+        
+        # Define the main flow
+        graph.add_edge(START, "initialize")
+        graph.add_edge("initialize", "observe")
+        graph.add_edge("observe", "recall")
+        graph.add_edge("recall", "analyze")
+        graph.add_edge("analyze", "decide")
+        
+        # Conditional routing from decide node
+        graph.add_conditional_edges(
+            "decide",
+            self._route_decision,
+            {
+                "execute": "execute",
+                "skip": "finalize",
+                "emergency": END  # Emergency exit
+            }
+        )
+        
+        graph.add_edge("execute", "learn")
+        graph.add_edge("learn", "finalize") 
+        graph.add_edge("finalize", END)
+        
+        return graph
+
+    async def _initialize_cycle(self, state: BrainState) -> BrainState:
+        """Initialize a new brain cycle with metadata and safety checks."""
+        
+        cycle_id = str(uuid.uuid4())
+        timestamp = datetime.now()
+        
+        # Check for emergency stop
+        if self.emergency_stop_active:
+            resume_time = state.get('resume_time')
+            if resume_time and timestamp < resume_time:
+                self.logger.warning("Brain in emergency stop mode, skipping cycle")
+                return {
+                    **state,
+                    'emergency_stop_active': True,
+                    'cycle_id': cycle_id,
+                    'timestamp': timestamp
+                }
+        
+        # Reset emergency stop if time has passed
+        if self.emergency_stop_active and timestamp >= state.get('resume_time', timestamp):
+            self.emergency_stop_active = False
+            self.logger.info("Emergency stop lifted, resuming normal operation")
+        
+        # Initialize cycle state
+        new_state = {
+            'cycle_id': cycle_id,
+            'timestamp': timestamp,
+            'cycle_count': state.get('cycle_count', 0) + 1,
+            'node_execution_times': {},
+            'debug_logs': [f"Starting cycle {cycle_id}"],
+            'warnings': [],
+            'errors': [],
+            'emergency_stop_active': self.emergency_stop_active
+        }
+        
+        self.logger.info(f"Initialized brain cycle {cycle_id}")
+        return {**state, **new_state}
+
+    async def _observe_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for observation node with timing and error handling."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.observer.observe(state)
+            execution_time = time.time() - start_time
+            
+            # Update execution times
+            node_times = state.get('node_execution_times', {})
+            node_times['observe'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Observation completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in observation node: {e}")
+            return await self._handle_node_error("observe", e, state)
+
+    async def _recall_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for memory recall node."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.recall.recall_memories(state)
+            execution_time = time.time() - start_time
+            
+            node_times = state.get('node_execution_times', {})
+            node_times['recall'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Memory recall completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in recall node: {e}")
+            return await self._handle_node_error("recall", e, state)
+
+    async def _analyze_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for opportunity analysis node."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.analyzer.analyze_opportunities(state)
+            execution_time = time.time() - start_time
+            
+            node_times = state.get('node_execution_times', {})
+            node_times['analyze'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Analysis completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in analysis node: {e}")
+            return await self._handle_node_error("analyze", e, state)
+
+    async def _decide_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for decision making node."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.decision_maker.make_decision(state)
+            execution_time = time.time() - start_time
+            
+            node_times = state.get('node_execution_times', {})
+            node_times['decide'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Decision completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in decision node: {e}")
+            return await self._handle_node_error("decide", e, state)
+
+    async def _execute_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for action execution node."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.executor.execute_action(state)
+            execution_time = time.time() - start_time
+            
+            node_times = state.get('node_execution_times', {})
+            node_times['execute'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Execution completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in execution node: {e}")
+            return await self._handle_node_error("execute", e, state)
+
+    async def _learn_wrapper(self, state: BrainState) -> BrainState:
+        """Wrapper for learning node."""
+        
+        start_time = time.time()
+        
+        try:
+            result = await self.learner.learn_from_result(state)
+            execution_time = time.time() - start_time
+            
+            node_times = state.get('node_execution_times', {})
+            node_times['learn'] = execution_time
+            
+            return {
+                **result,
+                'node_execution_times': node_times,
+                'debug_logs': state.get('debug_logs', []) + [
+                    f"Learning completed in {execution_time:.2f}s"
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in learning node: {e}")
+            return await self._handle_node_error("learn", e, state)
+
+    async def _finalize_cycle(self, state: BrainState) -> BrainState:
+        """Finalize the brain cycle with cleanup and metrics."""
+        
+        total_time = sum(state.get('node_execution_times', {}).values())
+        
+        # Update performance metrics
+        metrics = state.get('performance_metrics', {})
+        metrics.update({
+            'cycle_time': total_time,
+            'last_cycle_timestamp': state['timestamp'].isoformat(),
+            'cycles_completed': state.get('cycle_count', 0)
+        })
+        
+        # Log cycle completion
+        self.logger.info(
+            f"Brain cycle {state['cycle_id']} completed in {total_time:.2f}s"
+        )
+        
+        return {
+            **state,
+            'performance_metrics': metrics,
+            'debug_logs': state.get('debug_logs', []) + [
+                f"Cycle {state['cycle_id']} completed successfully"
+            ]
+        }
+
+    def _route_decision(self, state: BrainState) -> Literal["execute", "skip", "emergency"]:
+        """
+        Route decision based on selected action and risk assessment.
+        
+        Uses modern LangGraph routing pattern with conditional edges.
+        """
+        
+        # Check for emergency conditions
+        if state.get('emergency_stop_active', False):
+            return "emergency"
+        
+        # Check if we have a valid action selected
+        selected_action = state.get('selected_action')
+        if not selected_action:
+            self.logger.info("No action selected, skipping execution")
+            return "skip"
+        
+        # Check confidence and risk thresholds
+        confidence = state.get('confidence_score', 0)
+        risk_assessment = state.get('risk_assessment', {})
+        
+        if confidence < self.config.confidence_threshold:
+            self.logger.info(f"Confidence too low: {confidence}")
+            return "skip"
+        
+        if not risk_assessment.get('acceptable', False):
+            self.logger.info("Risk assessment failed")
+            return "skip"
+        
+        # All checks passed, proceed with execution
+        self.logger.info("All checks passed, proceeding with execution")
+        return "execute"
+
+    async def _handle_node_error(
+        self, 
+        node_name: str, 
+        error: Exception, 
+        state: BrainState
+    ) -> BrainState:
+        """Handle errors that occur in individual nodes."""
+        
+        error_info = {
+            'node': node_name,
+            'error_type': type(error).__name__,
+            'error_message': str(error),
+            'timestamp': datetime.now()
+        }
+        
+        # Use error handler for recovery
+        recovery_result = await self.error_handler.handle_error(error, state)
+        
+        # Update state with error information
+        errors = state.get('errors', [])
+        errors.append(error_info)
+        
+        return {
+            **state,
+            'errors': errors,
+            'error_count': state.get('error_count', 0) + 1,
+            'recovery_action': recovery_result
+        }
+
+    async def run_single_cycle(self, initial_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Run a single brain cycle.
+        
+        Args:
+            initial_state: Optional initial state to start with
+            
+        Returns:
+            Final state after cycle completion
+        """
+        
+        config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+        
+        # Prepare initial state
+        if initial_state is None:
+            initial_state = {}
+        
+        try:
+            # Run the graph
+            result = await self.compiled_graph.ainvoke(initial_state, config)
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error in brain cycle: {e}")
+            
+            # Handle critical errors
+            if self._is_critical_error(e):
+                await self._activate_emergency_stop()
+            
+            raise
+
+    async def run_continuous(self, interval: Optional[int] = None) -> None:
+        """
+        Run the brain continuously in cycles.
+        
+        Args:
+            interval: Sleep interval between cycles (uses config default if None)
+        """
+        
+        if interval is None:
+            interval = self.config.observation_interval
+        
+        self.is_running = True
+        self.logger.info(f"Starting continuous brain operation (interval: {interval}s)")
+        
+        try:
+            while self.is_running:
+                if not self.emergency_stop_active:
+                    try:
+                        await self.run_single_cycle()
+                        self.cycle_count += 1
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error in continuous cycle: {e}")
+                        
+                        # Sleep longer after errors
+                        await asyncio.sleep(interval * 2)
+                        continue
+                
+                # Wait before next cycle
+                await asyncio.sleep(interval)
+                
+        except KeyboardInterrupt:
+            self.logger.info("Brain operation stopped by user")
+        
+        finally:
+            self.is_running = False
+
+    async def stop(self):
+        """Stop continuous brain operation gracefully."""
+        
+        self.logger.info("Stopping brain operation...")
+        self.is_running = False
+
+    async def _activate_emergency_stop(self):
+        """Activate emergency stop procedures."""
+        
+        self.emergency_stop_active = True
+        self.logger.critical("EMERGENCY STOP ACTIVATED")
+        
+        # Stop continuous operation
+        self.is_running = False
+        
+        # Set resume time (1 hour from now)
+        resume_time = datetime.now() + timedelta(hours=1)
+        
+        # Cancel any pending transactions
+        try:
+            if hasattr(self.executor, 'cancel_pending_transactions'):
+                await self.executor.cancel_pending_transactions()
+        except Exception as e:
+            self.logger.error(f"Error canceling transactions: {e}")
+
+    def _is_critical_error(self, error: Exception) -> bool:
+        """Determine if an error is critical enough to trigger emergency stop."""
+        
+        error_msg = str(error).lower()
+        critical_patterns = [
+            'insufficient funds',
+            'transaction failed',
+            'network error',
+            'timeout',
+            'connection lost'
+        ]
+        
+        return any(pattern in error_msg for pattern in critical_patterns)
+
+    async def get_status(self) -> Dict[str, Any]:
+        """Get current brain status and metrics."""
+        
+        return {
+            'is_running': self.is_running,
+            'emergency_stop_active': self.emergency_stop_active,
+            'cycle_count': self.cycle_count,
+            'config': {
+                'confidence_threshold': self.config.confidence_threshold,
+                'risk_threshold': self.config.risk_threshold,
+                'observation_interval': self.config.observation_interval
+            },
+            'components': {
+                'cdp_manager_connected': self.cdp_manager is not None,
+                'memory_system_connected': self.memory_system is not None
+            }
+        }
+
+    def __repr__(self) -> str:
+        return f"AerodromeBrain(running={self.is_running}, cycles={self.cycle_count})"
+
+
+# Factory function for easy brain creation
+async def create_brain(
+    config: Optional[BrainConfig] = None,
+    cdp_manager=None,
+    memory_system=None
+) -> AerodromeBrain:
+    """
+    Factory function to create and initialize an AerodromeBrain instance.
+    
+    Args:
+        config: Brain configuration
+        cdp_manager: CDP SDK manager
+        memory_system: Memory system instance
+>>>>>>> 620c6999520bfc987c21b906916676e9b874d19c
+        
+    Returns:
+        Initialized AerodromeBrain instance
+    """
+<<<<<<< HEAD
+    brain = AerodromeBrain(config)
+    await brain.initialize()
+    return brain
+
+
+# Example usage
+async def main():
+    """Example usage of the Aerodrome Brain."""
+    
+    # Configure the brain
+    config = BrainConfig(
+        memory_config={
+            "api_key": "your_mem0_api_key",
+            "enable_graph": True
+        },
+        protocol_config={
+            "quicknode_url": "your_quicknode_url"
+        },
+        intelligence_config={
+            "gemini_api_key": "your_gemini_api_key"
+        },
+        health_check_interval=30,
+        max_concurrent_queries=5
+    )
+    
+    # Create and use the brain
+    async with AerodromeBrain(config).lifespan() as brain:
+        # Process some queries
+        response1 = await brain.process_query(
+            "What are the top performing pools on Aerodrome today?"
+        )
+        print(f"Response 1: {response1.response}")
+        
+        response2 = await brain.process_query(
+            "How does veAERO voting work?",
+            context={"user_level": "beginner"}
+        )
+        print(f"Response 2: {response2.response}")
+        
+        # Check system health
+        health = await brain.get_system_health()
+        print(f"System health: {health['system_status']}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+=======
+    
+    brain = AerodromeBrain(
+        config=config,
+        cdp_manager=cdp_manager,
+        memory_system=memory_system
+    )
+    
+    return brain
+>>>>>>> 620c6999520bfc987c21b906916676e9b874d19c

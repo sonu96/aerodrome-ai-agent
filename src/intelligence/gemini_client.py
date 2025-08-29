@@ -24,6 +24,10 @@ from google.generativeai.types import SafetySetting, HarmCategory, HarmBlockThre
 from google.generativeai.caching import CachedContent
 from pydantic import BaseModel, Field, ValidationError
 import structlog
+import vertexai
+from vertexai.generative_models import GenerativeModel
+from google.auth import default
+from google.auth.transport.requests import Request
 
 # Type variable for generic Pydantic models
 T = TypeVar('T', bound=BaseModel)
@@ -109,7 +113,9 @@ class GeminiClient:
     
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str] = None,  # Optional - use ADC if not provided
+        project_id: Optional[str] = None,
+        location: str = "us-central1",
         default_model: GeminiModel = GeminiModel.FLASH,
         safety_level: SafetyLevel = SafetyLevel.DEFAULT,
         enable_caching: bool = True,
@@ -120,7 +126,9 @@ class GeminiClient:
         Initialize the Gemini client
         
         Args:
-            api_key: Google AI API key
+            api_key: Optional Google AI API key (if None, uses Application Default Credentials)
+            project_id: Google Cloud project ID (required for Vertex AI)
+            location: Google Cloud location for Vertex AI
             default_model: Default model to use
             safety_level: Safety configuration level
             enable_caching: Enable context caching
@@ -128,14 +136,34 @@ class GeminiClient:
             request_timeout: Request timeout in seconds
         """
         self.api_key = api_key
+        self.project_id = project_id
+        self.location = location
         self.default_model = default_model
         self.safety_level = safety_level
         self.enable_caching = enable_caching
         self.cache_ttl_hours = cache_ttl_hours
         self.request_timeout = request_timeout
         
-        # Initialize client
-        genai.configure(api_key=api_key)
+        # Initialize client based on authentication method
+        if api_key:
+            # Use API key authentication
+            genai.configure(api_key=api_key)
+            self.use_vertex = False
+        else:
+            # Use Application Default Credentials with Vertex AI
+            if not project_id:
+                # Try to get project ID from environment or ADC
+                import os
+                project_id = os.environ.get('GOOGLE_CLOUD_PROJECT')
+                if not project_id:
+                    credentials, project = default()
+                    project_id = project
+            
+            if not project_id:
+                raise ValueError("project_id is required when using Application Default Credentials")
+            
+            vertexai.init(project=project_id, location=location)
+            self.use_vertex = True
         
         # Cache management
         self._cache_registry: Dict[str, CachedContent] = {}
