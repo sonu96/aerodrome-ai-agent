@@ -1,0 +1,52 @@
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Async and Web
+aiohttp==3.9.1
+fastapi==0.108.0
+uvicorn[standard]==0.25.0
+websockets==12.0
+slowapi==0.1.9
+
+# Mem0 AI Memory
+mem0ai==0.1.0
+neo4j==5.15.0
+
+# Google Cloud & Gemini
+google-cloud-aiplatform==1.38.1
+google-generativeai==0.8.3
+google-cloud-firestore==2.14.0
+google-cloud-logging==3.8.0
+google-cloud-tasks==2.15.0
+
+# Blockchain & Aerodrome
+web3==6.13.0
+eth-account==0.10.0
+eth-typing==3.5.2
+hexbytes==0.3.1
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+scipy==1.11.4
+
+# API & Networking
+httpx==0.25.2
+requests==2.31.0
+
+# Monitoring & Logging
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+pre-commit==3.6.0

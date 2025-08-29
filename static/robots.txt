@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /metrics/
+Disallow: /health/
+Allow: /docs
+Allow: /redoc
+
+# Sitemap
+Sitemap: https://your-domain.com/sitemap.xml
