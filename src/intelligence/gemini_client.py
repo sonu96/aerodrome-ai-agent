@@ -46,9 +46,11 @@ logger = structlog.get_logger(__name__)
 
 class GeminiModel(Enum):
     """Available Gemini 2.0 models"""
-    FLASH = "gemini-2.0-flash-001"
-    PRO = "gemini-2.0-pro-001"  # When available
-    FLASH_EXP = "gemini-2.0-flash-exp"  # Experimental
+    FLASH_2 = "gemini-2.0-flash-exp"  # Latest 2.0 Flash experimental
+    FLASH = "gemini-1.5-flash"  # Stable 1.5 Flash
+    FLASH_LATEST = "gemini-1.5-flash-latest"  # Latest 1.5 Flash
+    PRO = "gemini-1.5-pro"  # Stable Pro
+    PRO_LATEST = "gemini-1.5-pro-latest"  # Latest Pro
 
 
 class SafetyLevel(Enum):
@@ -125,7 +127,7 @@ class GeminiClient:
         api_key: Optional[str] = None,  # Optional - will check Secret Manager, then ADC
         project_id: Optional[str] = None,
         location: str = "us-central1",
-        default_model: GeminiModel = GeminiModel.FLASH,
+        default_model: GeminiModel = GeminiModel.FLASH_2,  # Use 2.0 Flash by default
         safety_level: SafetyLevel = SafetyLevel.DEFAULT,
         enable_caching: bool = True,
         cache_ttl_hours: int = 24,
