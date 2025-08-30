@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import time
+import os
 from typing import Any, Dict, List, Optional, Union, AsyncIterator, Type, TypeVar
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -28,6 +29,14 @@ import vertexai
 from vertexai.generative_models import GenerativeModel
 from google.auth import default
 from google.auth.transport.requests import Request
+
+# Import Secret Manager
+try:
+    from ..config.secrets import get_secret, get_secret_manager
+    USE_SECRET_MANAGER = True
+except ImportError:
+    USE_SECRET_MANAGER = False
+    get_secret = lambda x: os.environ.get(x.upper().replace('-', '_'))
 
 # Type variable for generic Pydantic models
 T = TypeVar('T', bound=BaseModel)
@@ -113,20 +122,21 @@ class GeminiClient:
     
     def __init__(
         self,
-        api_key: Optional[str] = None,  # Optional - use ADC if not provided
+        api_key: Optional[str] = None,  # Optional - will check Secret Manager, then ADC
         project_id: Optional[str] = None,
         location: str = "us-central1",
         default_model: GeminiModel = GeminiModel.FLASH,
         safety_level: SafetyLevel = SafetyLevel.DEFAULT,
         enable_caching: bool = True,
         cache_ttl_hours: int = 24,
-        request_timeout: int = 60
+        request_timeout: int = 60,
+        use_secret_manager: bool = True
     ):
         """
         Initialize the Gemini client
         
         Args:
-            api_key: Optional Google AI API key (if None, uses Application Default Credentials)
+            api_key: Optional Google AI API key (if None, checks Secret Manager then ADC)
             project_id: Google Cloud project ID (required for Vertex AI)
             location: Google Cloud location for Vertex AI
             default_model: Default model to use
@@ -134,7 +144,14 @@ class GeminiClient:
             enable_caching: Enable context caching
             cache_ttl_hours: Cache time-to-live in hours
             request_timeout: Request timeout in seconds
+            use_secret_manager: Whether to use Secret Manager for API key
         """
+        # Try to get API key from Secret Manager if not provided
+        if not api_key and use_secret_manager and USE_SECRET_MANAGER:
+            api_key = get_secret('gemini-api-key')
+            if api_key:
+                logger.info("Using Gemini API key from Secret Manager")
+        
         self.api_key = api_key
         self.project_id = project_id
         self.location = location
